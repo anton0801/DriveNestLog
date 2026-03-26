@@ -477,6 +477,32 @@ struct TabItemData {
     let title: String
 }
 
+// MARK: - No Vehicle Sheet View
+struct NoVehicleView: View {
+    @Environment(\.presentationMode) var presentationMode
+
+    var body: some View {
+        VStack(spacing: DNSpacing.lg) {
+            Spacer()
+            Image(systemName: "car.fill")
+                .font(.system(size: 60))
+                .foregroundColor(.dnTextSecondary)
+            Text("No Vehicle Added")
+                .font(DNFont.display(22))
+                .foregroundColor(.dnText)
+            Text("Please add a vehicle first before tracking expenses.")
+                .font(DNFont.body(15))
+                .foregroundColor(.dnTextSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, DNSpacing.xl)
+            DNButton("Close") { presentationMode.wrappedValue.dismiss() }
+                .padding(.horizontal, DNSpacing.lg)
+            Spacer()
+        }
+        .background(Color.dnBackground.ignoresSafeArea())
+    }
+}
+
 // MARK: - Number Formatter
 struct NumberHelper {
     static func currency(_ value: Double, _ currencyCode: String = "USD") -> String {

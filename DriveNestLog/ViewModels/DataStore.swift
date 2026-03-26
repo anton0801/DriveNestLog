@@ -48,6 +48,19 @@ class AppState: ObservableObject {
         savedUserName = ""
         savedUserEmail = ""
     }
+
+    func deleteAccount() {
+        isAuthenticated = false
+        currentUser = nil
+        savedUserName = ""
+        savedUserEmail = ""
+        hasCompletedOnboarding = false
+        appTheme = "system"
+        currency = "USD"
+        distanceUnit = "km"
+        fuelUnit = "L"
+        notificationsEnabled = true
+    }
     
     func updateUser(name: String) {
         currentUser?.name = name
@@ -423,5 +436,29 @@ class DataStore: ObservableObject {
         save(tireSets, key: "tireSets")
         save(insuranceRecords, key: "insuranceRecords")
         save(reminders, key: "reminders")
+    }
+
+    // MARK: - Delete All Data
+    func deleteAllData() {
+        vehicles = []
+        serviceRecords = []
+        expenses = []
+        fuelLogs = []
+        problemLogs = []
+        trips = []
+        checklistItems = []
+        documents = []
+        photos = []
+        parts = []
+        tireSets = []
+        insuranceRecords = []
+        reminders = []
+
+        let keys = ["vehicles", "serviceRecords", "expenses", "fuelLogs", "problemLogs",
+                    "trips", "checklistItems", "documents", "photos", "parts",
+                    "tireSets", "insuranceRecords", "reminders"]
+        keys.forEach { userDefaults.removeObject(forKey: $0) }
+
+        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
     }
 }

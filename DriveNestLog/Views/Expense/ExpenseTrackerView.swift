@@ -132,7 +132,11 @@ struct ExpenseTrackerView: View {
         }
         .background(Color.dnBackground.ignoresSafeArea())
         .sheet(isPresented: $showAdd) {
-            if let v = selectedVehicle { AddExpenseView(vehicleId: v.id) }
+            if let v = selectedVehicle {
+                AddExpenseView(vehicleId: v.id)
+            } else {
+                NoVehicleView()
+            }
         }
     }
     

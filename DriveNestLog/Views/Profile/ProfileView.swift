@@ -7,6 +7,7 @@ struct ProfileView: View {
     @EnvironmentObject var dataStore: DataStore
     @EnvironmentObject var appState: AppState
     @State private var showingLogoutAlert = false
+    @State private var showingDeleteAccountAlert = false
     @State private var showingExportSheet = false
     @State private var showingEditProfile = false
     @State private var showingAchievements = false
@@ -49,6 +50,24 @@ struct ProfileView: View {
                                 .stroke(Color(hex: "#F25F5C").opacity(0.3), lineWidth: 1)
                         )
                     }
+
+                    // Delete Account
+                    Button(action: { showingDeleteAccountAlert = true }) {
+                        HStack {
+                            Image(systemName: "person.crop.circle.badge.minus")
+                            Text("Delete Account")
+                        }
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Color(hex: "#FF3B30"))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(Color(hex: "#FF3B30").opacity(0.08))
+                        .cornerRadius(DNRadius.md)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: DNRadius.md)
+                                .stroke(Color(hex: "#FF3B30").opacity(0.3), lineWidth: 1)
+                        )
+                    }
                     .padding(.bottom, DNSpacing.xl)
                 }
                 .padding(DNSpacing.md)
@@ -75,6 +94,15 @@ struct ProfileView: View {
                 }
             } message: {
                 Text("Are you sure you want to sign out?")
+            }
+            .alert("Delete Account", isPresented: $showingDeleteAccountAlert) {
+                Button("Cancel", role: .cancel) {}
+                Button("Delete", role: .destructive) {
+                    dataStore.deleteAllData()
+                    appState.deleteAccount()
+                }
+            } message: {
+                Text("This will permanently delete your account and all associated data. This action cannot be undone.")
             }
             .sheet(isPresented: $showingEditProfile) {
                 EditProfileView()

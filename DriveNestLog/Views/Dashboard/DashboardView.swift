@@ -8,7 +8,7 @@ struct MainTabView: View {
     @State private var tabScales: [CGFloat] = [1, 1, 1, 1, 1]
     
     var body: some View {
-        ZStack(alignment: .bottom) {
+        VStack(spacing: 0) {
             TabView(selection: $selectedTab) {
                 DashboardView()
                     .tag(0)
@@ -295,7 +295,11 @@ struct DashboardView: View {
         .background(Color.dnBackground.ignoresSafeArea())
         .sheet(isPresented: $showAddVehicle) { AddVehicleView() }
         .sheet(isPresented: $showAddExpense) {
-            if let v = selectedVehicle { AddExpenseView(vehicleId: v.id) }
+            if let v = selectedVehicle {
+                AddExpenseView(vehicleId: v.id)
+            } else {
+                NoVehicleView()
+            }
         }
         .sheet(isPresented: $showAddService) {
             if let v = selectedVehicle { AddServiceView(vehicleId: v.id) }
