@@ -1,7 +1,57 @@
 import Foundation
 import SwiftUI
 
-// MARK: - Vehicle Model
+struct PermissionState: Equatable {
+    var isGranted: Bool
+    var isDenied: Bool
+    var lastAskedDate: Date?
+    
+    var canAsk: Bool {
+        guard !isGranted && !isDenied else { return false }
+        if let date = lastAskedDate {
+            return Date().timeIntervalSince(date) / 86400 >= 3
+        }
+        return true
+    }
+    
+    static var initial: PermissionState {
+        PermissionState(isGranted: false, isDenied: false, lastAskedDate: nil)
+    }
+}
+
+struct Configuration: Equatable {
+    var endpoint: String?
+    var mode: String?
+    var isFirstLaunch: Bool
+    
+    static var initial: Configuration {
+        Configuration(endpoint: nil, mode: nil, isFirstLaunch: true)
+    }
+}
+
+enum NetworkState: Equatable {
+    case connected
+    case disconnected
+}
+
+struct UIState: Equatable {
+    var showPermissionPrompt: Bool
+    var showOfflineView: Bool
+    var navigateToMain: Bool
+    var navigateToWeb: Bool
+    
+    static var initial: UIState {
+        UIState(
+            showPermissionPrompt: false,
+            showOfflineView: false,
+            navigateToMain: false,
+            navigateToWeb: false
+        )
+    }
+}
+
+typealias Reducer = (DriveNestState, DriveNestIntent) -> DriveNestState
+
 struct Vehicle: Identifiable, Codable {
     var id: UUID = UUID()
     var brand: String
@@ -86,7 +136,27 @@ struct ServiceRecord: Identifiable, Codable {
     }
 }
 
-// MARK: - Expense
+struct TrackingData: Equatable {
+    let attributes: [String: String]
+    
+    var isEmpty: Bool { attributes.isEmpty }
+    var isOrganic: Bool { attributes["af_status"] == "Organic" }
+    
+    static var empty: TrackingData {
+        TrackingData(attributes: [:])
+    }
+}
+
+struct NavigationData: Equatable {
+    let parameters: [String: String]
+    
+    var isEmpty: Bool { parameters.isEmpty }
+    
+    static var empty: NavigationData {
+        NavigationData(parameters: [:])
+    }
+}
+
 struct Expense: Identifiable, Codable {
     var id: UUID = UUID()
     var vehicleId: UUID
@@ -202,7 +272,44 @@ struct ProblemLog: Identifiable, Codable {
     }
 }
 
-// MARK: - Trip
+enum NetworkError: Error {
+    case invalidURL
+    case requestFailed
+    case decodingFailed
+}
+
+struct DriveNestState: Equatable {
+    var phase: Phase
+    var tracking: TrackingData
+    var navigation: NavigationData
+    var permission: PermissionState
+    var configuration: Configuration
+    var network: NetworkState
+    var ui: UIState
+    
+    static var initial: DriveNestState {
+        DriveNestState(
+            phase: .idle,
+            tracking: .empty,
+            navigation: .empty,
+            permission: .initial,
+            configuration: .initial,
+            network: .connected,
+            ui: .initial
+        )
+    }
+    
+    enum Phase: Equatable {
+        case idle
+        case loading
+        case validating
+        case validated
+        case processing
+        case ready(String)
+        case failed
+    }
+}
+
 struct Trip: Identifiable, Codable {
     var id: UUID = UUID()
     var vehicleId: UUID
@@ -377,7 +484,36 @@ struct InsuranceRecord: Identifiable, Codable {
     }
 }
 
-// MARK: - User
+enum DriveNestIntent {
+    // Lifecycle
+    case initialize
+    case timeout
+    
+    // Data Input
+    case trackingDataReceived([String: Any])
+    case navigationDataReceived([String: Any])
+    
+    // User Actions
+    case requestNotificationPermission
+    case deferNotificationPermission
+    
+    // System Events
+    case networkConnected
+    case networkDisconnected
+    case validationCompleted(Bool)
+    case attributionFetched([String: Any])
+    case endpointFetched(String)
+    case permissionResponseReceived(Bool)
+    
+    // Navigation
+    case navigateToMain
+    case navigateToWeb
+}
+
+protocol IntentProcessor {
+    func process(_ intent: DriveNestIntent) async
+}
+
 struct AppUser: Codable {
     var id: UUID = UUID()
     var name: String

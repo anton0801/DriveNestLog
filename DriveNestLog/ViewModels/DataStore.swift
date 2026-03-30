@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Combine
+import AppsFlyerLib
 import UserNotifications
 
 // MARK: - App State (EnvironmentObject)
@@ -460,5 +461,190 @@ class DataStore: ObservableObject {
         keys.forEach { userDefaults.removeObject(forKey: $0) }
 
         UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+    }
+}
+
+@MainActor
+final class DriveNestStore: ObservableObject, IntentProcessor {
+    
+    @Published var state: DriveNestState = .initial
+    
+    private let storage: StorageService
+    private let validation: ValidationService
+    private let network: NetworkService
+    private let notification: NotificationService
+    private var isLocked = false
+    private var timeoutTask: Task<Void, Never>?
+    
+    init(
+        storage: StorageService,
+        validation: ValidationService,
+        network: NetworkService,
+        notification: NotificationService
+    ) {
+        self.storage = storage
+        self.validation = validation
+        self.network = network
+        self.notification = notification
+    }
+    
+    func process(_ intent: DriveNestIntent) async {
+        let newState = reduce(state: state, intent: intent)
+        state = newState
+        
+        await handleSideEffects(for: intent)
+    }
+    
+    func processSync(_ intent: DriveNestIntent) {
+        let newState = reduce(state: state, intent: intent)
+        state = newState
+        
+        Task {
+            await handleSideEffects(for: intent)
+        }
+    }
+    
+    private func handleSideEffects(for intent: DriveNestIntent) async {
+        switch intent {
+        case .initialize:
+            loadStoredState()
+            scheduleTimeout()
+            
+        case .trackingDataReceived(let data):
+            storage.saveTracking(data.mapValues { "\($0)" })
+            await performValidation()
+            
+        case .navigationDataReceived(let data):
+            storage.saveNavigation(data.mapValues { "\($0)" })
+            
+        case .requestNotificationPermission:
+            await requestPermission()
+            
+        case .validationCompleted(true):
+            await executeBusinessLogic()
+            
+        case .endpointFetched(let url):
+            timeoutTask?.cancel()
+            isLocked = true
+            storage.saveEndpoint(url)
+            storage.saveMode("Active")
+            storage.markLaunched()
+            
+        case .permissionResponseReceived:
+            storage.savePermissions(state.permission)
+            
+        case .deferNotificationPermission:
+            storage.savePermissions(state.permission)
+            
+        default:
+            break
+        }
+    }
+    
+    private func loadStoredState() {
+        let loaded = storage.loadState()
+        
+        state.tracking = TrackingData(attributes: loaded.tracking)
+        state.navigation = NavigationData(parameters: loaded.navigation)
+        state.permission = loaded.permission
+        state.configuration = Configuration(
+            endpoint: loaded.endpoint,
+            mode: loaded.mode,
+            isFirstLaunch: loaded.isFirstLaunch
+        )
+    }
+    
+    private func scheduleTimeout() {
+        timeoutTask = Task {
+            try? await Task.sleep(nanoseconds: 30_000_000_000)
+            guard !isLocked else { return }
+            await process(.timeout)
+        }
+    }
+    
+    private func performValidation() async {
+        guard !isLocked, !state.tracking.isEmpty else { return }
+        
+        state.phase = .validating
+        
+        do {
+            let isValid = try await validation.validate()
+            await process(.validationCompleted(isValid))
+        } catch {
+            await process(.validationCompleted(false))
+        }
+    }
+    
+    private func executeBusinessLogic() async {
+        guard !isLocked, !state.tracking.isEmpty else {
+            await process(.navigateToMain)
+            return
+        }
+        
+        // Check temp_url shortcut
+        if let temp = UserDefaults.standard.string(forKey: "temp_url"), !temp.isEmpty {
+            await process(.endpointFetched(temp))
+            return
+        }
+        
+        // Organic first launch flow
+        if state.tracking.isOrganic && state.configuration.isFirstLaunch {
+            await executeOrganicFlow()
+            return
+        }
+        
+        // Normal flow
+        await fetchEndpoint()
+    }
+    
+    private func executeOrganicFlow() async {
+        state.phase = .processing
+        
+        try? await Task.sleep(nanoseconds: 5_000_000_000)
+        
+        guard !isLocked else { return }
+        
+        do {
+            let deviceID = AppsFlyerLib.shared().getAppsFlyerUID()
+            var fetched = try await network.fetchAttribution(deviceID: deviceID)
+            
+            // Merge navigation
+            for (key, value) in state.navigation.parameters {
+                if fetched[key] == nil {
+                    fetched[key] = value
+                }
+            }
+            
+            storage.saveTracking(fetched.mapValues { "\($0)" })
+            // await process(.trackingDataReceived(fetched))
+            await fetchEndpoint()
+        } catch {
+            await process(.navigateToMain)
+        }
+    }
+    
+    private func fetchEndpoint() async {
+        guard !isLocked else { return }
+        
+        state.phase = .processing
+        
+        do {
+            let trackingDict = state.tracking.attributes.mapValues { $0 as Any }
+            let endpoint = try await network.fetchEndpoint(tracking: trackingDict)
+            await process(.endpointFetched(endpoint))
+        } catch {
+            await process(.navigateToMain)
+        }
+    }
+    
+    private func requestPermission() async {
+        notification.requestPermission { [weak self] granted in
+            Task { @MainActor in
+                if granted {
+                    self?.notification.registerForPush()
+                }
+                await self?.process(.permissionResponseReceived(granted))
+            }
+        }
     }
 }

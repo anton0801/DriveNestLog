@@ -224,7 +224,72 @@ struct DNBadge: View {
     }
 }
 
-// MARK: - Empty State
+func reduce(state: DriveNestState, intent: DriveNestIntent) -> DriveNestState {
+    var newState = state
+    
+    switch intent {
+    case .initialize:
+        newState.phase = .loading
+        
+    case .trackingDataReceived(let data):
+        let converted = data.mapValues { "\($0)" }
+        newState.tracking = TrackingData(attributes: converted)
+        
+    case .navigationDataReceived(let data):
+        let converted = data.mapValues { "\($0)" }
+        newState.navigation = NavigationData(parameters: converted)
+        
+    case .validationCompleted(let success):
+        if success {
+            newState.phase = .validated
+        } else {
+            newState.phase = .failed
+            newState.ui.navigateToMain = true
+        }
+        
+    case .endpointFetched(let url):
+        newState.configuration.endpoint = url
+        newState.configuration.mode = "Active"
+        newState.configuration.isFirstLaunch = false
+        newState.phase = .ready(url)
+        
+        if newState.permission.canAsk {
+            newState.ui.showPermissionPrompt = true
+        } else {
+            newState.ui.navigateToWeb = true
+        }
+        
+    case .permissionResponseReceived(let granted):
+        newState.permission.isGranted = granted
+        newState.permission.isDenied = !granted
+        newState.permission.lastAskedDate = Date()
+        newState.ui.showPermissionPrompt = false
+        newState.ui.navigateToWeb = true
+        
+    case .deferNotificationPermission:
+        newState.permission.lastAskedDate = Date()
+        newState.ui.showPermissionPrompt = false
+        newState.ui.navigateToWeb = true
+        
+    case .networkConnected:
+        newState.network = .connected
+        newState.ui.showOfflineView = false
+        
+    case .networkDisconnected:
+        newState.network = .disconnected
+        newState.ui.showOfflineView = true
+        
+    case .timeout:
+        newState.phase = .failed
+        newState.ui.navigateToMain = true
+        
+    default:
+        break
+    }
+    
+    return newState
+}
+
 struct DNEmptyState: View {
     let icon: String
     let title: String
